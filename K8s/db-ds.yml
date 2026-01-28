@@ -1,15 +1,31 @@
 ---
-# Mongo Deployment
+# 1. Headless Service (For Stable Network Identities)
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongo-service  # This name will be part of the Pod DNS
+  labels:
+    app: mongo
+spec:
+  ports:
+    - port: 27017
+      targetPort: 27017
+      name: mongo
+  clusterIP: None      # "None" makes it a Headless Service
+  selector:
+    app: mongo
+---
+# 2. StatefulSet (For Data Persistence & Identity)
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: mongo
 spec:
+  serviceName: "mongo-service" # Link to Headless Service
+  replicas: 2
   selector:
     matchLabels:
       app: mongo
-  strategy:
-    type: Recreate
   template:
     metadata:
       labels:
@@ -37,15 +53,17 @@ spec:
           ports:
             - containerPort: 27017
               name: mongo
----
-# Mongo Service
-apiVersion: v1
-kind: Service
-metadata:
-  name: mongo-service
-spec:
-  ports:
-    - port: 27017
-      targetPort: 27017
-  selector:
-    app: mongo
+          volumeMounts:
+            - name: mongo-data
+              mountPath: /data/db
+  
+  # 3. Dynamic Volume Provisioning (EBS CSI Driver)
+  volumeClaimTemplates:
+    - metadata:
+        name: mongo-data
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        storageClassName: "ebs-sc" # Make sure you create this StorageClass with encrypted: "true"
+        resources:
+          requests:
+            storage: 5Gi
